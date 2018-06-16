@@ -1,0 +1,9 @@
+[package]
+name = "project_common"
+version = "0.1.0"
+authors = ["Ryan1729 <Ryan1729@gmail.com>"]
+
+[dependencies]
+
+[dev-dependencies]
+quickcheck = "0.6.2"
