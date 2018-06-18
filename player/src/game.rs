@@ -315,4 +315,18 @@ mod tests {
 
         assert_eq!(pretty!(double_rainbow), pretty!(buffer));
     }
+
+    #[test]
+    fn msb_0_to_4_then_1_bit() {
+        let bytes = [
+            0b000_001_01,
+            0b0_011_100_1,
+        ];
+
+        let mut buffer = [0; 7];
+
+        render_from_msb(&bytes, &mut buffer, 0);
+
+        assert_eq!(pretty!([BLUE, GREEN, RED, YELLOW, PURPLE, YELLOW, BLUE]), pretty!(buffer));
+    }
 }
