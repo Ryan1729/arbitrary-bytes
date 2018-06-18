@@ -1,5 +1,5 @@
-use common::*;
 use common::inner_common::BYTES;
+use common::*;
 
 #[inline]
 pub fn update_and_render(framebuffer: &mut Framebuffer, state: &mut GameState, input: Input) {
@@ -17,12 +17,12 @@ pub fn update_and_render(framebuffer: &mut Framebuffer, state: &mut GameState, i
 }
 
 macro_rules! advance {
-    ($i: ident, $max:expr) => {
+    ($i:ident, $max:expr) => {
         $i += 1;
         if $i >= $max {
             break;
         }
-    }
+    };
 }
 
 fn render_from_lsb(bytes: &[u8], buffer: &mut [u32], byte_index: usize) {
@@ -225,22 +225,8 @@ mod tests {
 
     //What does it mean!?!
     const double_rainbow: [u32; 16] = [
-        BLUE,
-        GREEN,
-        RED,
-        YELLOW,
-        PURPLE,
-        GREY,
-        WHITE,
-        BLACK,
-        BLUE,
-        GREEN,
-        RED,
-        YELLOW,
-        PURPLE,
-        GREY,
-        WHITE,
-        BLACK,
+        BLUE, GREEN, RED, YELLOW, PURPLE, GREY, WHITE, BLACK, BLUE, GREEN, RED, YELLOW, PURPLE,
+        GREY, WHITE, BLACK,
     ];
 
     #[derive(PartialEq, Eq)]
@@ -248,8 +234,8 @@ mod tests {
 
     use std::fmt;
 
-    impl <'a>fmt::Debug for PrettySlice<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    impl<'a> fmt::Debug for PrettySlice<'a> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "[")?;
 
             let mut sep = "";
@@ -277,7 +263,7 @@ mod tests {
     macro_rules! pretty {
         ($expr:expr) => {
             PrettySlice(&$expr)
-        }
+        };
     }
 
     #[test]
@@ -318,15 +304,49 @@ mod tests {
 
     #[test]
     fn msb_0_to_4_then_1_bit() {
-        let bytes = [
-            0b000_001_01,
-            0b0_011_100_1,
-        ];
+        let bytes = [0b000_001_01, 0b0_011_100_1];
 
-        let mut buffer = [0; 7];
+        let mut buffer = [0; 32];
 
         render_from_msb(&bytes, &mut buffer, 0);
 
-        assert_eq!(pretty!([BLUE, GREEN, RED, YELLOW, PURPLE, YELLOW, BLUE]), pretty!(buffer));
+        assert_eq!(
+            pretty!([
+                BLUE,
+                GREEN,
+                RED,
+                YELLOW,
+                PURPLE,
+                PURPLE,
+                BLUE,
+                GREY,
+                GREEN,
+                WHITE,
+                RED,
+                BLUE,
+                RED,
+                PURPLE,
+                BLACK,
+                GREEN,
+                // and again
+                BLUE,
+                GREEN,
+                RED,
+                YELLOW,
+                PURPLE,
+                PURPLE,
+                BLUE,
+                GREY,
+                GREEN,
+                WHITE,
+                RED,
+                BLUE,
+                RED,
+                PURPLE,
+                BLACK,
+                GREEN
+            ]),
+            pretty!(buffer)
+        );
     }
 }
