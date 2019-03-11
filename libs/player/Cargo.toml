@@ -1,7 +1,10 @@
 [package]
-name = "rust-wasm-template"
+name = "player"
 version = "0.1.0"
 authors = ["Ryan Wiedemann <Ryan1729@gmail.com>"]
+
+[lib]
+path = "src/player.rs"
 
 [dependencies]
 serde = "1"
@@ -11,6 +14,19 @@ quickcheck = "0.6"
 stdweb = "0.4"
 project_common = { path = "../project_common" }
 
+[dependencies.rendering]
+path = "../rendering"
+
+[dependencies.platform_types]
+path = "../platform_types"
+
+[dependencies.features]
+path = "../features"
+
+[features]
+default = []
+invariant-checking = ["features/invariant-checking"]
+logging = ["features/logging"]
 
 [profile.dev]
 opt-level = 2

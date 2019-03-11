@@ -3,9 +3,6 @@
 #![allow(non_snake_case)]
 
 #[macro_use]
-extern crate bitflags;
-
-#[macro_use]
 extern crate stdweb;
 
 use std::cell::RefCell;
@@ -17,11 +14,7 @@ use stdweb::web::{self, Element, IElement, IEventTarget, INode, INonElementParen
 
 use stdweb::{UnsafeTypedArray, Value};
 
-mod common;
-use common::*;
-
-mod game;
-use game::update_and_render;
+use platform_types::{h, w, Button, State, StateParams, SFX};
 
 macro_rules! enclose {
     ( [$( $x:ident ),*] $y:expr ) => {
@@ -129,7 +122,7 @@ fn setup_webgl(canvas: &Element) -> Value {
         var sampler_uniform = gl.getUniformLocation( program, "u_sampler" );
         gl.uniform1i( sampler_uniform, 0 );
 
-        var matrix = @{ortho( 0.0, 256.0, 240.0, 0.0 )};
+        var matrix = @{ortho( 0.0, w!(.0), h!(.0), 0.0 )};
         var matrix_uniform = gl.getUniformLocation( program, "u_matrix" );
         gl.uniformMatrix4fv( matrix_uniform, false, matrix );
 
@@ -139,12 +132,12 @@ fn setup_webgl(canvas: &Element) -> Value {
             gl.TEXTURE_2D,
             0,
             gl.RGBA,
-            256,
-            256,
+            @{w!()},
+            @{h!()},
             0,
             gl.RGBA,
             gl.UNSIGNED_BYTE,
-            new Uint8Array( 256 * 256 * 4 )
+            new Uint8Array(@{w!() * h!() * 4 })
           );
         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
@@ -153,9 +146,9 @@ fn setup_webgl(canvas: &Element) -> Value {
         gl.bindBuffer( gl.ARRAY_BUFFER, vertex_buffer );
         var vertices = [
             0.0, 0.0,
-            0.0, 240.0,
-            256.0, 0.0,
-            256.0, 240.0
+            0.0, @{h!(.0)},
+            @{w!(.0)}, 0.0,
+            @{w!(.0)}, @{h!(.0)}
         ];
         gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( vertices ), gl.STATIC_DRAW );
         gl.vertexAttribPointer( vertex_attr, 2, gl.FLOAT, false, 0, 0 );
@@ -164,9 +157,9 @@ fn setup_webgl(canvas: &Element) -> Value {
         gl.bindBuffer( gl.ARRAY_BUFFER, texcoord_buffer );
         var texcoords = [
             0.0, 0.0,
-            0.0, 240.0 / 256.0,
+            0.0, @{w!(.0) / h!(.0)},
             1.0, 0.0,
-            1.0, 240.0 / 256.0
+            1.0, @{w!(.0) / h!(.0)}
         ];
         gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( texcoords ), gl.STATIC_DRAW );
         gl.vertexAttribPointer( texcoord_attr, 2, gl.FLOAT, false, 0, 0 );
@@ -181,21 +174,31 @@ fn setup_webgl(canvas: &Element) -> Value {
 
         gl.clearColor( 0.0, 0.0, 0.0, 1.0 );
         gl.enable( gl.DEPTH_TEST );
-        gl.viewport( 0, 0, 256, 240 );
+        gl.viewport( 0, 0, @{w!()}, @{h!()});
 
         return gl;
     )
 }
 
-struct PinkyWeb {
-    state: State,
+fn handle_sound(request: SFX) {
+    let request_string = request.to_sound_key();
+
+    js! {
+        if (soundHandler) {
+            soundHandler(@{request_string});
+        }
+    };
+}
+
+struct PinkyWeb<S: State> {
     paused: bool,
     busy: bool,
     js_ctx: Value,
+    state: S,
 }
 
-impl PinkyWeb {
-    fn new(canvas: &Element) -> Self {
+impl<S: State> PinkyWeb<S> {
+    fn new(canvas: &Element, state: S) -> Self {
         let gl = setup_webgl(&canvas);
 
         let js_ctx = js!(
@@ -216,7 +219,7 @@ impl PinkyWeb {
                 canvas = new_canvas;
 
                 h.ctx = canvas.getContext( "2d" );
-                h.img = h.ctx.createImageData( 256, 240 );
+                h.img = h.ctx.createImageData( @{w!()}, @{h!()} );
                 h.buffer = new Uint32Array( h.img.data.buffer );
             }
 
@@ -224,7 +227,7 @@ impl PinkyWeb {
         );
 
         PinkyWeb {
-            state: State::new(),
+            state,
             paused: true,
             busy: false,
             js_ctx,
@@ -240,13 +243,13 @@ impl PinkyWeb {
         self.busy = false;
     }
 
-    fn execute_cycle(&mut self) -> Result<bool, Box<Error>> {
-        self.state.frame();
+    fn execute_cycle(&mut self) -> Result<bool, Box<dyn Error>> {
+        self.state.frame(handle_sound);
 
         Ok(true)
     }
 
-    fn run_a_bit(&mut self) -> Result<bool, Box<Error>> {
+    fn run_a_bit(&mut self) -> Result<bool, Box<dyn Error>> {
         if self.paused {
             return Ok(true);
         }
@@ -274,7 +277,7 @@ impl PinkyWeb {
             js! {
                 var h = @{&self.js_ctx};
                 var framebuffer = @{unsafe {
-                    UnsafeTypedArray::new( &self.state.framebuffer.buffer )
+                    UnsafeTypedArray::new( self.state.get_frame_buffer() )
                  }};
                 if( h.gl ) {
                     var data = new Uint8Array(
@@ -283,7 +286,7 @@ impl PinkyWeb {
                         framebuffer.byteLength
                     );
                     h.gl.texSubImage2D( h.gl.TEXTURE_2D,
-                         0, 0, 0, 256, 240, h.gl.RGBA, h.gl.UNSIGNED_BYTE, data );
+                         0, 0, 0, @{w!()}, @{h!()}, h.gl.RGBA, h.gl.UNSIGNED_BYTE, data );
                     h.gl.drawElements( h.gl.TRIANGLES, 6, h.gl.UNSIGNED_SHORT, 0 );
                 } else {
                     h.buffer.set( framebuffer );
@@ -339,47 +342,44 @@ impl PinkyWeb {
     }
 }
 
-impl State {
-    pub fn frame(&mut self) {
-        update_and_render(&mut self.framebuffer, &mut self.game_state, self.input);
-
-        self.input.previous_gamepad = self.input.gamepad;
-    }
-
-    pub fn press(&mut self, button: Button::Ty) {
-        self.input.gamepad.insert(button);
-    }
-
-    pub fn release(&mut self, button: Button::Ty) {
-        self.input.gamepad.remove(button);
-    }
+#[inline]
+fn logger(s: &str) {
+    console!(log, s);
 }
 
-fn emulate_for_a_single_frame(pinky: Rc<RefCell<PinkyWeb>>) {
+#[inline]
+fn error_logger(s: &str) {
+    console!(error, s);
+}
+
+use std::mem;
+use stdweb::web::Date;
+
+fn emulate_for_a_single_frame<S: State + 'static>(pinky: Rc<RefCell<PinkyWeb<S>>>) {
     pinky.borrow_mut().busy = true;
 
     web::set_timeout(
         enclose!( [pinky] move || {
-        let finished_frame = match pinky.borrow_mut().run_a_bit() {
-            Ok( result ) => result,
-            Err( error ) => {
-                handle_error( error );
-                return;
-            }
-        };
+            let finished_frame = match pinky.borrow_mut().run_a_bit() {
+                Ok( result ) => result,
+                Err( error ) => {
+                    handle_error( error );
+                    return;
+                }
+            };
 
-        if !finished_frame {
-            web::set_timeout( move || { emulate_for_a_single_frame( pinky ); }, 0 );
-        } else {
-            let mut pinky = pinky.borrow_mut();
-            pinky.busy = false;
-        }
-    }),
+            if !finished_frame {
+                web::set_timeout( move || { emulate_for_a_single_frame( pinky ); }, 0 );
+            } else {
+                let mut pinky = pinky.borrow_mut();
+                pinky.busy = false;
+            }
+        }),
         0,
     );
 }
 
-fn main_loop(pinky: Rc<RefCell<PinkyWeb>>) {
+fn main_loop<S: State + 'static>(pinky: Rc<RefCell<PinkyWeb<S>>>) {
     // If we're running too slowly there is no point
     // in queueing up even more work.
     if !pinky.borrow_mut().busy {
@@ -410,7 +410,7 @@ fn hide(id: &str) {
         .unwrap();
 }
 
-fn support_input(pinky: Rc<RefCell<PinkyWeb>>) {
+fn support_input<S: State + 'static>(pinky: Rc<RefCell<PinkyWeb<S>>>) {
     web::window().add_event_listener(enclose!( [pinky] move |event: KeyDownEvent| {
         let handled = pinky.borrow_mut().on_key( &event.key(), event.location(), true );
         if handled {
@@ -426,7 +426,7 @@ fn support_input(pinky: Rc<RefCell<PinkyWeb>>) {
     }));
 }
 
-fn handle_error<E: Into<Box<Error>>>(error: E) {
+fn handle_error<E: Into<Box<dyn Error>>>(error: E) {
     let error_message = format!("{}", error.into());
     web::document()
         .get_element_by_id("error-description")
@@ -437,11 +437,12 @@ fn handle_error<E: Into<Box<Error>>>(error: E) {
     show("error");
 }
 
-fn main() {
+pub fn run<S: State + 'static>(state: S) {
     stdweb::initialize();
 
     let canvas = web::document().get_element_by_id("viewport").unwrap();
-    let pinky = Rc::new(RefCell::new(PinkyWeb::new(&canvas)));
+
+    let pinky = Rc::new(RefCell::new(PinkyWeb::new(&canvas, state)));
 
     support_input(pinky.clone());
 
@@ -457,4 +458,13 @@ fn main() {
     });
 
     stdweb::event_loop();
+}
+
+pub fn get_state_params() -> StateParams {
+    let seed = unsafe {
+        let time = Date::new().get_time();
+
+        mem::transmute::<[f64; 2], [u8; 16]>([time, 1.0 / time])
+    };
+    (seed, Some(logger), Some(error_logger))
 }

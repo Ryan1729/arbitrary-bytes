@@ -1,8 +1,94 @@
-use common::inner_common::BYTES;
-use common::*;
+extern crate features;
+use features::{invariants_checked, log, GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
+extern crate platform_types;
+use platform_types::{Button, Input, Speaker, State, StateParams, SFX};
+extern crate rendering;
+use rendering::{Framebuffer, BLACK, BLUE, GREEN, GREY, PURPLE, RED, WHITE, YELLOW};
+
+pub struct EntireState {
+    pub game_state: GameState,
+    pub framebuffer: Framebuffer,
+    pub input: Input,
+    pub speaker: Speaker,
+}
+
+impl EntireState {
+    pub fn new((seed, logger, error_logger): StateParams) -> Self {
+        let framebuffer = Framebuffer::new();
+
+        unsafe {
+            GLOBAL_LOGGER = logger;
+            GLOBAL_ERROR_LOGGER = error_logger;
+        }
+
+        EntireState {
+            game_state: GameState::new(),
+            framebuffer,
+            input: Input::new(),
+            speaker: Speaker::new(),
+        }
+    }
+}
+
+impl State for EntireState {
+    fn frame(&mut self, handle_sound: fn(SFX)) {
+        update_and_render(
+            &mut self.framebuffer,
+            &mut self.game_state,
+            self.input,
+            &mut self.speaker,
+        );
+
+        self.input.previous_gamepad = self.input.gamepad;
+
+        for request in self.speaker.drain() {
+            handle_sound(request);
+        }
+    }
+
+    fn press(&mut self, button: Button::Ty) {
+        if self.input.previous_gamepad.contains(button) {
+            //This is meant to pass along the key repeat, if any.
+            //Not sure if rewriting history is the best way to do this.
+            self.input.previous_gamepad.remove(button);
+        }
+
+        self.input.gamepad.insert(button);
+    }
+
+    fn release(&mut self, button: Button::Ty) {
+        self.input.gamepad.remove(button);
+    }
+
+    fn get_frame_buffer(&self) -> &[u32] {
+        &self.framebuffer.buffer
+    }
+}
+
+impl GameState {
+    pub fn new() -> GameState {
+        GameState {
+            byte_index: 0,
+            need_first_render: true,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct GameState {
+    pub byte_index: usize,
+    pub need_first_render: bool,
+}
+
+pub const BYTES: &[u8] = include_bytes!("player.rs");
 
 #[inline]
-pub fn update_and_render(framebuffer: &mut Framebuffer, state: &mut GameState, input: Input) {
+pub fn update_and_render(
+    framebuffer: &mut Framebuffer,
+    state: &mut GameState,
+    input: Input,
+    speaker: &mut Speaker,
+) {
     if state.need_first_render {
         render_from_msb(&BYTES, &mut framebuffer.buffer, state.byte_index);
         state.need_first_render = false;
@@ -312,39 +398,10 @@ mod tests {
 
         assert_eq!(
             pretty!([
-                BLUE,
-                GREEN,
-                RED,
-                YELLOW,
-                PURPLE,
-                PURPLE,
-                BLUE,
-                GREY,
-                GREEN,
-                WHITE,
-                RED,
-                BLUE,
-                RED,
-                PURPLE,
-                BLACK,
-                GREEN,
-                // and again
-                BLUE,
-                GREEN,
-                RED,
-                YELLOW,
-                PURPLE,
-                PURPLE,
-                BLUE,
-                GREY,
-                GREEN,
-                WHITE,
-                RED,
-                BLUE,
-                RED,
-                PURPLE,
-                BLACK,
-                GREEN
+                BLUE, GREEN, RED, YELLOW, PURPLE, PURPLE, BLUE, GREY, GREEN, WHITE, RED, BLUE, RED,
+                PURPLE, BLACK, GREEN, // and again
+                BLUE, GREEN, RED, YELLOW, PURPLE, PURPLE, BLUE, GREY, GREEN, WHITE, RED, BLUE, RED,
+                PURPLE, BLACK, GREEN
             ]),
             pretty!(buffer)
         );
