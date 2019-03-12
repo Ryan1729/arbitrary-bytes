@@ -13,6 +13,9 @@ stdweb = "0.4"
 [dependencies.platform_types]
 path = "../platform_types"
 
+[dependencies.player]
+path = "../player"
+
 
 [profile.dev]
 opt-level = 2

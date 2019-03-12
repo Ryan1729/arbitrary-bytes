@@ -10,7 +10,10 @@ use std::error::Error;
 use std::rc::Rc;
 
 use stdweb::web::event::{IEvent, IKeyboardEvent, KeyDownEvent, KeyUpEvent, KeyboardLocation};
-use stdweb::web::{self, Element, IElement, IEventTarget, INode, INonElementParentNode};
+use stdweb::web::{
+    self, Element, FileReader, FileReaderResult, IElement, IEventTarget, INode,
+    INonElementParentNode,
+};
 
 use stdweb::{UnsafeTypedArray, Value};
 
@@ -195,6 +198,28 @@ struct PinkyWeb<S: State> {
     busy: bool,
     js_ctx: Value,
     state: S,
+}
+
+impl<S: State> State for PinkyWeb<S> {
+    fn frame(&mut self, handle_sound: fn(SFX)) {
+        self.state.frame(handle_sound);
+    }
+
+    fn press(&mut self, button: Button::Ty) {
+        self.state.press(button);
+    }
+
+    fn release(&mut self, button: Button::Ty) {
+        self.state.release(button);
+    }
+
+    fn get_frame_buffer(&self) -> &[u32] {
+        self.state.get_frame_buffer()
+    }
+
+    fn update_bytes(&mut self, bytes: &[u8]) {
+        self.state.update_bytes(bytes);
+    }
 }
 
 impl<S: State> PinkyWeb<S> {
@@ -437,12 +462,49 @@ fn handle_error<E: Into<Box<dyn Error>>>(error: E) {
     show("error");
 }
 
+static mut PINKY: Option<Rc<RefCell<State + 'static>>> = None;
+
+use stdweb::js_export;
+
+#[js_export]
+fn update_bytes(file_reader: FileReader) {
+    let s = match file_reader.result() {
+        Some(value) => match value {
+            FileReaderResult::String(value) => {
+                match unsafe { PINKY.as_ref() } {
+                    Some(pinky) => match pinky.try_borrow_mut() {
+                        Ok(mut pinky) => {
+                            pinky.update_bytes(value.as_bytes());
+                        }
+                        Err(e) => {
+                            console!(log, format!("Could not borrow PINKY! {:?}", e));
+                        }
+                    },
+                    None => {
+                        console!(log, "PINKY was None!");
+                    }
+                }
+
+                format!("{:?}", value.as_bytes())
+            }
+            _ => String::from("not a text"),
+        },
+        None => String::from("empty"),
+    };
+
+    console!(log, format!("update bytes: {}", s));
+}
+
 pub fn run<S: State + 'static>(state: S) {
     stdweb::initialize();
 
     let canvas = web::document().get_element_by_id("viewport").unwrap();
 
     let pinky = Rc::new(RefCell::new(PinkyWeb::new(&canvas, state)));
+
+    unsafe {
+        PINKY = Some(pinky.clone());
+    }
 
     support_input(pinky.clone());
 

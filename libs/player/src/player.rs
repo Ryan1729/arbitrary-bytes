@@ -1,5 +1,5 @@
 extern crate features;
-use features::{invariants_checked, log, GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
+use features::{GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
 extern crate platform_types;
 use platform_types::{Button, Input, Speaker, State, StateParams, SFX};
 extern crate rendering;
@@ -63,6 +63,11 @@ impl State for EntireState {
     fn get_frame_buffer(&self) -> &[u32] {
         &self.framebuffer.buffer
     }
+
+    fn update_bytes(&mut self, bytes: &[u8]) {
+        self.game_state.bytes = bytes.to_vec();
+        self.game_state.need_first_render = true;
+    }
 }
 
 impl GameState {
@@ -70,6 +75,7 @@ impl GameState {
         GameState {
             byte_index: 0,
             need_first_render: true,
+            bytes: DEFAULT_BYTES.to_vec(),
         }
     }
 }
@@ -78,9 +84,10 @@ impl GameState {
 pub struct GameState {
     pub byte_index: usize,
     pub need_first_render: bool,
+    pub bytes: Vec<u8>,
 }
 
-pub const BYTES: &[u8] = include_bytes!("player.rs");
+pub const DEFAULT_BYTES: &[u8] = include_bytes!("player.rs");
 
 #[inline]
 pub fn update_and_render(
@@ -90,15 +97,15 @@ pub fn update_and_render(
     speaker: &mut Speaker,
 ) {
     if state.need_first_render {
-        render_from_msb(&BYTES, &mut framebuffer.buffer, state.byte_index);
+        render_from_msb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
         state.need_first_render = false;
         return;
     }
 
     if input.pressed_this_frame(Button::Right) {
-        render_from_lsb(&BYTES, &mut framebuffer.buffer, state.byte_index);
+        render_from_lsb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
     } else if input.pressed_this_frame(Button::Left) {
-        render_from_msb(&BYTES, &mut framebuffer.buffer, state.byte_index);
+        render_from_msb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
     }
 }
 

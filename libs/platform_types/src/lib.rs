@@ -115,4 +115,6 @@ pub trait State {
     fn release(&mut self, button: Button::Ty);
 
     fn get_frame_buffer(&self) -> &[u32];
+
+    fn update_bytes(&mut self, bytes: &[u8]);
 }
