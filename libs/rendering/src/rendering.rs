@@ -236,7 +236,28 @@ impl Framebuffer {
         self.blend(Framebuffer::xy_to_i(x, y), colour);
     }
 
-    pub fn draw_quad(
+    pub fn draw_filled_triangle(
+        &mut self,
+        x0: u8,
+        y0: u8,
+        x1: u8,
+        y1: u8,
+        x2: u8,
+        y2: u8,
+        colour: u32,
+    ) {
+        //TODO actually draw triangle
+        // I could have just used a solution from
+        // https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
+        // But I think I'll get a better result if I read parts 6, 7, and 8 of
+        // https://fgiesen.wordpress.com/2013/02/17/optimizing-sw-occlusion-culling-index/
+        // instead
+        self.buffer[Framebuffer::xy_to_i(x0 as usize, y0 as usize)] = colour;
+        self.buffer[Framebuffer::xy_to_i(x1 as usize, y1 as usize)] = colour;
+        self.buffer[Framebuffer::xy_to_i(x2 as usize, y2 as usize)] = colour;
+    }
+
+    pub fn draw_filled_quad(
         &mut self,
         x0: u8,
         y0: u8,
@@ -248,11 +269,13 @@ impl Framebuffer {
         y3: u8,
         colour: u32,
     ) {
-        //TODO actually draw quad
-        self.buffer[Framebuffer::xy_to_i(x0 as usize, y0 as usize)] = colour;
-        self.buffer[Framebuffer::xy_to_i(x1 as usize, y1 as usize)] = colour;
-        self.buffer[Framebuffer::xy_to_i(x2 as usize, y2 as usize)] = colour;
-        self.buffer[Framebuffer::xy_to_i(x3 as usize, y3 as usize)] = colour;
+        //  1---2
+        //  |  /|
+        //  | / |
+        //  |/  |
+        //  0---3
+        self.draw_filled_triangle(x0, y0, x1, y1, x2, y2, colour);
+        self.draw_filled_triangle(x0, y0, x2, y2, x3, y3, colour);
     }
 
     //see http://members.chello.at/easyfilter/bresenham.c

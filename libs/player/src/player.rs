@@ -180,7 +180,7 @@ pub fn update_and_render_quadrilateral(
         extract_or_zero!(state.byte_index + 7),
     ];
 
-    framebuffer.draw_quad(
+    framebuffer.draw_filled_quad(
         u8s[0],
         u8s[1],
         u8s[2],
