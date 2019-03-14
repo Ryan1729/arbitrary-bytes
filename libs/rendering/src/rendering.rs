@@ -236,6 +236,25 @@ impl Framebuffer {
         self.blend(Framebuffer::xy_to_i(x, y), colour);
     }
 
+    pub fn draw_quad(
+        &mut self,
+        x0: u8,
+        y0: u8,
+        x1: u8,
+        y1: u8,
+        x2: u8,
+        y2: u8,
+        x3: u8,
+        y3: u8,
+        colour: u32,
+    ) {
+        //TODO actually draw quad
+        self.buffer[Framebuffer::xy_to_i(x0 as usize, y0 as usize)] = colour;
+        self.buffer[Framebuffer::xy_to_i(x1 as usize, y1 as usize)] = colour;
+        self.buffer[Framebuffer::xy_to_i(x2 as usize, y2 as usize)] = colour;
+        self.buffer[Framebuffer::xy_to_i(x3 as usize, y3 as usize)] = colour;
+    }
+
     //see http://members.chello.at/easyfilter/bresenham.c
     pub fn draw_circle(&mut self, x_mid: usize, y_mid: usize, radius: usize, colour: u32) {
         if x_mid < radius || y_mid < radius {

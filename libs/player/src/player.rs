@@ -3,7 +3,13 @@ use features::{GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
 extern crate platform_types;
 use platform_types::{Button, Input, Speaker, State, StateParams, SFX};
 extern crate rendering;
-use rendering::{Framebuffer, BLACK, BLUE, GREEN, GREY, PURPLE, RED, WHITE, YELLOW};
+use rendering::{Framebuffer, BLACK, BLUE, GREEN, GREY, PALETTE, PURPLE, RED, WHITE, YELLOW};
+
+macro_rules! d {
+    () => {
+        Default::default()
+    };
+}
 
 pub struct EntireState {
     pub game_state: GameState,
@@ -66,24 +72,47 @@ impl State for EntireState {
 
     fn update_bytes(&mut self, bytes: &[u8]) {
         self.game_state.bytes = bytes.to_vec();
-        self.game_state.need_first_render = true;
+        self.game_state.render_mode = match self.game_state.render_mode {
+            RenderMode::Quadrilateral(_) => RenderMode::Quadrilateral(d!()),
+            RenderMode::ThreeBitsPerPixel(_) => RenderMode::ThreeBitsPerPixel(d!()),
+        };
     }
 }
 
 impl GameState {
     pub fn new() -> GameState {
         GameState {
-            byte_index: 0,
-            need_first_render: true,
             bytes: DEFAULT_BYTES.to_vec(),
+            ..d!()
         }
     }
 }
 
 #[derive(Default)]
-pub struct GameState {
+pub struct QuadrilateralState {
     pub byte_index: usize,
-    pub need_first_render: bool,
+}
+
+#[derive(Default)]
+pub struct ThreeBitsPerPixelState {
+    pub byte_index: usize,
+    pub done_first_render: bool,
+}
+
+pub enum RenderMode {
+    Quadrilateral(QuadrilateralState),
+    ThreeBitsPerPixel(ThreeBitsPerPixelState),
+}
+
+impl Default for RenderMode {
+    fn default() -> RenderMode {
+        RenderMode::Quadrilateral(d!())
+    }
+}
+
+#[derive(Default)]
+pub struct GameState {
+    pub render_mode: RenderMode,
     pub bytes: Vec<u8>,
 }
 
@@ -96,16 +125,97 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) {
-    if state.need_first_render {
-        render_from_msb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
-        state.need_first_render = false;
+    if input.pressed_this_frame(Button::Start) {
+        state.render_mode = match state.render_mode {
+            RenderMode::Quadrilateral(_) => RenderMode::ThreeBitsPerPixel(d!()),
+            RenderMode::ThreeBitsPerPixel(_) => RenderMode::Quadrilateral(d!()),
+        };
+    }
+
+    match state.render_mode {
+        RenderMode::Quadrilateral(ref mut q_state) => {
+            update_and_render_quadrilateral(framebuffer, q_state, input, speaker, &state.bytes)
+        }
+        RenderMode::ThreeBitsPerPixel(ref mut tbbp_state) => {
+            update_and_render_three_bits_per_pixel(
+                framebuffer,
+                tbbp_state,
+                input,
+                speaker,
+                &state.bytes,
+            )
+        }
+    }
+}
+
+pub fn update_and_render_quadrilateral(
+    framebuffer: &mut Framebuffer,
+    state: &mut QuadrilateralState,
+    input: Input,
+    speaker: &mut Speaker,
+    bytes: &[u8],
+) {
+    if state.byte_index == 0 {
+        framebuffer.clear_to(PALETTE[PALETTE.len() - 1]);
+    }
+
+    macro_rules! extract_or_zero {
+        ($i: expr) => {
+            if $i >= bytes.len() {
+                0
+            } else {
+                bytes[$i]
+            }
+        };
+    }
+
+    let u8s = [
+        extract_or_zero!(state.byte_index + 0),
+        extract_or_zero!(state.byte_index + 1),
+        extract_or_zero!(state.byte_index + 2),
+        extract_or_zero!(state.byte_index + 3),
+        extract_or_zero!(state.byte_index + 4),
+        extract_or_zero!(state.byte_index + 5),
+        extract_or_zero!(state.byte_index + 6),
+        extract_or_zero!(state.byte_index + 7),
+    ];
+
+    framebuffer.draw_quad(
+        u8s[0],
+        u8s[1],
+        u8s[2],
+        u8s[3],
+        u8s[4],
+        u8s[5],
+        u8s[6],
+        u8s[7],
+        PALETTE[(state.byte_index / 8) % PALETTE.len()],
+    );
+
+    state.byte_index += 8;
+    if state.byte_index >= bytes.len() {
+        // TODO should we fade out or something?
+        state.byte_index = 0;
+    }
+}
+
+pub fn update_and_render_three_bits_per_pixel(
+    framebuffer: &mut Framebuffer,
+    state: &mut ThreeBitsPerPixelState,
+    input: Input,
+    speaker: &mut Speaker,
+    bytes: &[u8],
+) {
+    if !state.done_first_render {
+        render_from_msb(bytes, &mut framebuffer.buffer, state.byte_index);
+        state.done_first_render = true;
         return;
     }
 
     if input.pressed_this_frame(Button::Right) {
-        render_from_lsb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
+        render_from_lsb(bytes, &mut framebuffer.buffer, state.byte_index);
     } else if input.pressed_this_frame(Button::Left) {
-        render_from_msb(&state.bytes, &mut framebuffer.buffer, state.byte_index);
+        render_from_msb(bytes, &mut framebuffer.buffer, state.byte_index);
     }
 }
 
