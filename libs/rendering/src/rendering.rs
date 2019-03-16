@@ -1,7 +1,7 @@
 use text::bytes_lines;
 
 use crate::constants::*;
-use std::cmp::max;
+use std::cmp::{max, min};
 
 pub struct Framebuffer {
     pub buffer: Vec<u32>,
@@ -236,6 +236,13 @@ impl Framebuffer {
         self.blend(Framebuffer::xy_to_i(x, y), colour);
     }
 
+    fn orient_2d(ax: u8, ay: u8, bx: u8, by: u8, cx: u8, cy: u8) -> i16 {
+        (bx as i16 - ax as i16) * (cy as i16 - ay as i16)
+            - (by as i16 - ay as i16) * (cx as i16 - ax as i16)
+    }
+
+    // see parts 6, 7, and 8 of
+    // https://fgiesen.wordpress.com/2013/02/17/optimizing-sw-occlusion-culling-index/
     pub fn draw_filled_triangle(
         &mut self,
         x0: u8,
@@ -246,15 +253,52 @@ impl Framebuffer {
         y2: u8,
         colour: u32,
     ) {
-        //TODO actually draw triangle
-        // I could have just used a solution from
-        // https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
-        // But I think I'll get a better result if I read parts 6, 7, and 8 of
-        // https://fgiesen.wordpress.com/2013/02/17/optimizing-sw-occlusion-culling-index/
-        // instead
-        self.buffer[Framebuffer::xy_to_i(x0 as usize, y0 as usize)] = colour;
-        self.buffer[Framebuffer::xy_to_i(x1 as usize, y1 as usize)] = colour;
-        self.buffer[Framebuffer::xy_to_i(x2 as usize, y2 as usize)] = colour;
+        // TODO find `attempt to multiply with overflow` which this introduced.
+        //Seen with a file contaiing 0x0000_00FF_FF00_FFFF
+        // Compute triangle bounding box
+        let min_x = min(x0, min(x1, x2));
+        let min_y = min(y0, min(y1, y2));
+        let max_x = max(x0, max(x1, x2));
+        let max_y = max(y0, max(y1, y2));
+
+        // Triangle setup
+        let a_01 = y0 as i16 - y1 as i16;
+        let b_01 = x1 as i16 - x0 as i16;
+        let a_12 = y1 as i16 - y2 as i16;
+        let b_12 = x2 as i16 - x1 as i16;
+        let a_20 = y2 as i16 - y0 as i16;
+        let b_20 = x0 as i16 - x2 as i16;
+
+        // Barycentric coordinates at minX/minY corner
+        let (px, py) = (min_x, min_y);
+        let mut w0_row = Framebuffer::orient_2d(x1, y1, x2, y2, px, py);
+        let mut w1_row = Framebuffer::orient_2d(x2, y2, x0, y0, px, py);
+        let mut w2_row = Framebuffer::orient_2d(x0, y0, x1, y1, px, py);
+
+        // Rasterize
+        for py in min_y..=max_y {
+            // Barycentric coordinates at start of row
+            let mut w0 = w0_row;
+            let mut w1 = w1_row;
+            let mut w2 = w2_row;
+
+            for px in min_x..=max_x {
+                // If p is on or inside all edges, render pixel.
+                if w0 | w1 | w2 >= 0 {
+                    self.buffer[Framebuffer::xy_to_i(px as usize, py as usize)] = colour;
+                }
+
+                // One step to the right
+                w0 += a_12;
+                w1 += a_20;
+                w2 += a_01;
+            }
+
+            // One row step
+            w0_row += b_12;
+            w1_row += b_20;
+            w2_row += b_01;
+        }
     }
 
     pub fn draw_filled_quad(
@@ -269,13 +313,13 @@ impl Framebuffer {
         y3: u8,
         colour: u32,
     ) {
-        //  1---2
+        //  0---2
         //  |  /|
         //  | / |
         //  |/  |
-        //  0---3
+        //  1---3
         self.draw_filled_triangle(x0, y0, x1, y1, x2, y2, colour);
-        self.draw_filled_triangle(x0, y0, x2, y2, x3, y3, colour);
+        self.draw_filled_triangle(x1, y1, x3, y3, x2, y2, colour);
     }
 
     //see http://members.chello.at/easyfilter/bresenham.c
