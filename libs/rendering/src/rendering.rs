@@ -1,19 +1,68 @@
 use text::bytes_lines;
 
 use crate::constants::*;
+use features::log;
 use std::cmp::{max, min};
 
-pub struct Framebuffer {
-    pub buffer: Vec<u32>,
+#[cfg(not(test))]
+macro_rules! test_dbg {
+    ($($arg:tt)*) => {};
 }
 
-impl PartialEq for Framebuffer {
-    fn eq(&self, other: &Framebuffer) -> bool {
+#[cfg(test)]
+macro_rules! test_dbg {
+    ($($arg:tt)*) => {dbg!($($arg)*)};
+}
+
+pub trait Dimensions {
+    fn get() -> (usize, usize);
+}
+
+pub struct ScreenDim;
+
+#[macro_export]
+macro_rules! impl_dimensions {
+    (($w: expr, $h: expr): $type: ty) => {
+        impl Dimensions for $type {
+            fn get() -> (usize, usize) {
+                ($w, $h)
+            }
+        }
+    };
+}
+
+impl_dimensions!((SCREEN_WIDTH, SCREEN_HEIGHT): ScreenDim);
+
+//The type parameter lets us have Framebuffers of diferent dimensions
+pub type Framebuffer = FramebufferInternal<ScreenDim>;
+
+use std::marker::PhantomData;
+
+pub struct FramebufferInternal<D: Dimensions> {
+    pub buffer: Vec<u32>,
+    _marker: std::marker::PhantomData<D>,
+}
+
+impl<D: Dimensions> Default for FramebufferInternal<D> {
+    fn default() -> Self {
+        let mut buffer = Vec::new();
+        let (w, h) = D::get();
+        buffer.resize(w * h, PALETTE[0]);
+
+        FramebufferInternal {
+            buffer,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<D: Dimensions> PartialEq for FramebufferInternal<D> {
+    fn eq(&self, other: &FramebufferInternal<D>) -> bool {
         &self.buffer[..] == &other.buffer[..]
     }
 }
 
-impl Eq for Framebuffer {}
+impl<D: Dimensions> Eq for FramebufferInternal<D> {}
 
 macro_rules! red {
     ($colour:expr) => {
@@ -52,13 +101,13 @@ macro_rules! set_alpha {
 }
 
 #[allow(dead_code)]
-impl Framebuffer {
-    pub fn new() -> Framebuffer {
-        Framebuffer::default()
+impl<D: Dimensions> FramebufferInternal<D> {
+    pub fn new() -> FramebufferInternal<D> {
+        Self::default()
     }
 
     pub fn xy_to_i(x: usize, y: usize) -> usize {
-        y.saturating_mul(SCREEN_WIDTH).saturating_add(x)
+        y.saturating_mul(D::get().0).saturating_add(x)
     }
 
     pub fn draw_filled_rect(
@@ -74,7 +123,7 @@ impl Framebuffer {
 
         for current_y in y..one_past_bottom_edge {
             for current_x in x..one_past_right_edge {
-                let i = Framebuffer::xy_to_i(current_x, current_y);
+                let i = Self::xy_to_i(current_x, current_y);
                 if i < self.buffer.len() {
                     self.buffer[i] = colour;
                 }
@@ -88,14 +137,14 @@ impl Framebuffer {
 
         for current_y in y..one_past_bottom_edge {
             {
-                let i = Framebuffer::xy_to_i(x, current_y);
+                let i = Self::xy_to_i(x, current_y);
                 if i < self.buffer.len() {
                     self.buffer[i] = colour;
                 }
             }
 
             {
-                let i = Framebuffer::xy_to_i(one_past_right_edge - 1, current_y);
+                let i = Self::xy_to_i(one_past_right_edge - 1, current_y);
                 if i < self.buffer.len() {
                     self.buffer[i] = colour;
                 }
@@ -104,14 +153,14 @@ impl Framebuffer {
 
         for current_x in x..one_past_right_edge {
             {
-                let i = Framebuffer::xy_to_i(current_x, y);
+                let i = Self::xy_to_i(current_x, y);
                 if i < self.buffer.len() {
                     self.buffer[i] = colour;
                 }
             }
 
             {
-                let i = Framebuffer::xy_to_i(current_x, one_past_bottom_edge - 1);
+                let i = Self::xy_to_i(current_x, one_past_bottom_edge - 1);
                 if i < self.buffer.len() {
                     self.buffer[i] = colour;
                 }
@@ -134,14 +183,14 @@ impl Framebuffer {
 
         for current_y in y..one_past_bottom_edge {
             {
-                let i = Framebuffer::xy_to_i(x, current_y);
+                let i = Self::xy_to_i(x, current_y);
                 if i < self.buffer.len() {
                     self.buffer[i] = shader(x, current_y, width, height);
                 }
             }
 
             {
-                let i = Framebuffer::xy_to_i(one_past_right_edge - 1, current_y);
+                let i = Self::xy_to_i(one_past_right_edge - 1, current_y);
                 if i < self.buffer.len() {
                     self.buffer[i] = shader(x, current_y, width, height);
                 }
@@ -150,14 +199,14 @@ impl Framebuffer {
 
         for current_x in x..one_past_right_edge {
             {
-                let i = Framebuffer::xy_to_i(current_x, y);
+                let i = Self::xy_to_i(current_x, y);
                 if i < self.buffer.len() {
                     self.buffer[i] = shader(current_x, y, width, height);
                 }
             }
 
             {
-                let i = Framebuffer::xy_to_i(current_x, one_past_bottom_edge - 1);
+                let i = Self::xy_to_i(current_x, one_past_bottom_edge - 1);
                 if i < self.buffer.len() {
                     self.buffer[i] = shader(current_x, y, width, height);
                 }
@@ -187,22 +236,18 @@ impl Framebuffer {
         let mut y = 0isize;
         let mut err = 2 - 2 * r; /* II. Quadrant */
         while {
-            self.buffer[Framebuffer::xy_to_i(
-                (x_mid as isize - x) as usize,
-                (y_mid as isize + y) as usize,
-            )] = colour; /*   I. Quadrant */
-            self.buffer[Framebuffer::xy_to_i(
-                (x_mid as isize - y) as usize,
-                (y_mid as isize - x) as usize,
-            )] = colour; /*  II. Quadrant */
-            self.buffer[Framebuffer::xy_to_i(
-                (x_mid as isize + x) as usize,
-                (y_mid as isize - y) as usize,
-            )] = colour; /* III. Quadrant */
-            self.buffer[Framebuffer::xy_to_i(
-                (x_mid as isize + y) as usize,
-                (y_mid as isize + x) as usize,
-            )] = colour; /*  IV. Quadrant */
+            self.buffer
+                [Self::xy_to_i((x_mid as isize - x) as usize, (y_mid as isize + y) as usize)] =
+                colour; /*   I. Quadrant */
+            self.buffer
+                [Self::xy_to_i((x_mid as isize - y) as usize, (y_mid as isize - x) as usize)] =
+                colour; /*  II. Quadrant */
+            self.buffer
+                [Self::xy_to_i((x_mid as isize + x) as usize, (y_mid as isize - y) as usize)] =
+                colour; /* III. Quadrant */
+            self.buffer
+                [Self::xy_to_i((x_mid as isize + y) as usize, (y_mid as isize + x) as usize)] =
+                colour; /*  IV. Quadrant */
             r = err;
             if r <= y {
                 y += 1;
@@ -233,12 +278,15 @@ impl Framebuffer {
 
     #[inline]
     pub fn blend_xy(&mut self, x: usize, y: usize, colour: u32) {
-        self.blend(Framebuffer::xy_to_i(x, y), colour);
+        self.blend(Self::xy_to_i(x, y), colour);
     }
 
-    fn orient_2d(ax: u8, ay: u8, bx: u8, by: u8, cx: u8, cy: u8) -> i16 {
-        (bx as i16 - ax as i16) * (cy as i16 - ay as i16)
-            - (by as i16 - ay as i16) * (cx as i16 - ax as i16)
+    // from https://fgiesen.wordpress.com/2013/02/08/triangle-rasterization-in-practice/
+    //"the result of [orient_2d] fits inside a (2p+2)-bit signed integer"
+    // Solving for p = 8 gives 2 * 8 + 2 = 18 so we need at least a 32 bit number.
+    fn orient_2d(ax: u8, ay: u8, bx: u8, by: u8, cx: u8, cy: u8) -> i32 {
+        (bx as i32 - ax as i32) * (cy as i32 - ay as i32)
+            - (by as i32 - ay as i32) * (cx as i32 - ax as i32)
     }
 
     // see parts 6, 7, and 8 of
@@ -253,8 +301,6 @@ impl Framebuffer {
         y2: u8,
         colour: u32,
     ) {
-        // TODO find `attempt to multiply with overflow` which this introduced.
-        //Seen with a file contaiing 0x0000_00FF_FF00_FFFF
         // Compute triangle bounding box
         let min_x = min(x0, min(x1, x2));
         let min_y = min(y0, min(y1, y2));
@@ -262,18 +308,18 @@ impl Framebuffer {
         let max_y = max(y0, max(y1, y2));
 
         // Triangle setup
-        let a_01 = y0 as i16 - y1 as i16;
-        let b_01 = x1 as i16 - x0 as i16;
-        let a_12 = y1 as i16 - y2 as i16;
-        let b_12 = x2 as i16 - x1 as i16;
-        let a_20 = y2 as i16 - y0 as i16;
-        let b_20 = x0 as i16 - x2 as i16;
+        let a_01 = y0 as i32 - y1 as i32;
+        let b_01 = x1 as i32 - x0 as i32;
+        let a_12 = y1 as i32 - y2 as i32;
+        let b_12 = x2 as i32 - x1 as i32;
+        let a_20 = y2 as i32 - y0 as i32;
+        let b_20 = x0 as i32 - x2 as i32;
 
         // Barycentric coordinates at minX/minY corner
         let (px, py) = (min_x, min_y);
-        let mut w0_row = Framebuffer::orient_2d(x1, y1, x2, y2, px, py);
-        let mut w1_row = Framebuffer::orient_2d(x2, y2, x0, y0, px, py);
-        let mut w2_row = Framebuffer::orient_2d(x0, y0, x1, y1, px, py);
+        let mut w0_row = Self::orient_2d(x1, y1, x2, y2, px, py);
+        let mut w1_row = Self::orient_2d(x2, y2, x0, y0, px, py);
+        let mut w2_row = Self::orient_2d(x0, y0, x1, y1, px, py);
 
         // Rasterize
         for py in min_y..=max_y {
@@ -283,9 +329,10 @@ impl Framebuffer {
             let mut w2 = w2_row;
 
             for px in min_x..=max_x {
+                test_dbg!((w0, w1, w2));
                 // If p is on or inside all edges, render pixel.
                 if w0 | w1 | w2 >= 0 {
-                    self.buffer[Framebuffer::xy_to_i(px as usize, py as usize)] = colour;
+                    self.buffer[Self::xy_to_i(px as usize, py as usize)] = colour;
                 }
 
                 // One step to the right
@@ -313,13 +360,15 @@ impl Framebuffer {
         y3: u8,
         colour: u32,
     ) {
+        log!((x0, y0, x1, y1, x2, y2, x3, y3));
         //  0---2
         //  |  /|
         //  | / |
         //  |/  |
         //  1---3
-        self.draw_filled_triangle(x0, y0, x1, y1, x2, y2, colour);
-        self.draw_filled_triangle(x1, y1, x3, y3, x2, y2, colour);
+        // clockwise
+        self.draw_filled_triangle(x0, y0, x2, y2, x1, y1, colour);
+        self.draw_filled_triangle(x1, y1, x2, y2, x3, y3, colour);
     }
 
     //see http://members.chello.at/easyfilter/bresenham.c
@@ -465,7 +514,7 @@ impl Framebuffer {
                 current_x = (xm - x2 - 1) as usize;
                 current_y = (ym + y) as usize;
                 while current_x > x_mid || current_y > y_mid {
-                    self.buffer[Framebuffer::xy_to_i(current_x, current_y)] = colour;
+                    self.buffer[Self::xy_to_i(current_x, current_y)] = colour;
 
                     current_x -= 1;
                     current_y -= 1;
@@ -474,7 +523,7 @@ impl Framebuffer {
                 current_x = (xm + y) as usize;
                 current_y = (ym + x2 + 1) as usize;
                 while current_x > x_mid || current_y < y_mid {
-                    self.buffer[Framebuffer::xy_to_i(current_x, current_y)] = colour;
+                    self.buffer[Self::xy_to_i(current_x, current_y)] = colour;
 
                     current_x -= 1;
                     current_y += 1;
@@ -483,7 +532,7 @@ impl Framebuffer {
                 current_x = (xm - y) as usize;
                 current_y = (ym - x2 - 1) as usize;
                 while current_x < x_mid || current_y > y_mid {
-                    self.buffer[Framebuffer::xy_to_i(current_x, current_y)] = colour;
+                    self.buffer[Self::xy_to_i(current_x, current_y)] = colour;
 
                     current_x += 1;
                     current_y -= 1;
@@ -492,7 +541,7 @@ impl Framebuffer {
                 current_x = (xm + x2 + 1) as usize;
                 current_y = (ym - y) as usize;
                 while current_x < x_mid || current_y < y_mid {
-                    self.buffer[Framebuffer::xy_to_i(current_x, current_y)] = colour;
+                    self.buffer[Self::xy_to_i(current_x, current_y)] = colour;
 
                     current_x += 1;
                     current_y += 1;
@@ -505,7 +554,7 @@ impl Framebuffer {
             x < 0
         } {}
 
-        self.buffer[Framebuffer::xy_to_i(x_mid, y_mid)] = colour;
+        self.buffer[Self::xy_to_i(x_mid, y_mid)] = colour;
     }
 
     pub fn sspr(
@@ -708,6 +757,7 @@ impl Framebuffer {
         self.nine_slice(BUTTON_PRESSED_TOP_LEFT, x, y, w, h);
     }
 
+    #[allow(non_snake_case)]
     pub fn nine_slice(&mut self, top_left: u8, x: u8, y: u8, w: u8, h: u8) {
         let TOP_LEFT: u8 = top_left;
         let TOP: u8 = TOP_LEFT + 1;
@@ -749,6 +799,7 @@ impl Framebuffer {
         self.spr(BOTTOM_RIGHT, before_right_corner, above_bottom_corner);
     }
 
+    #[allow(non_snake_case)]
     pub fn bottom_six_slice(&mut self, top_left: u8, x: u8, y: u8, w: u8, h: u8) {
         let TOP_LEFT: u8 = top_left;
         let TOP: u8 = TOP_LEFT + 1;
@@ -790,6 +841,7 @@ impl Framebuffer {
         self.spr(BOTTOM_RIGHT, before_right_corner, above_bottom_corner);
     }
 
+    #[allow(non_snake_case)]
     fn three_slice(&mut self, left_edge: u8, x: u8, y: u8, w: u8) {
         let LEFT: u8 = left_edge;
         let MIDDLE: u8 = LEFT + 1;
@@ -891,10 +943,9 @@ impl Framebuffer {
         interior: u32,
         outline: u32,
     ) {
-        let c =
-            Framebuffer::hexagon_match(HEXAGON[(hex_y * 8 + hex_x) as usize], interior, outline);
+        let c = Self::hexagon_match(HEXAGON[(hex_y * 8 + hex_x) as usize], interior, outline);
         if c > 0 {
-            self.buffer[Framebuffer::xy_to_i(
+            self.buffer[Self::xy_to_i(
                 //if we don't `& 0b11` here then the hexagon is drawn 4 to the right of `x`
                 //when the right half of the hexagon is drawn.
                 x.wrapping_add(hex_x & 0b11) as _,
@@ -938,15 +989,6 @@ pub fn get_char_xy(sprite_number: u8) -> (u8, u8) {
         (sprite_number % SPRITES_PER_ROW) * FONT_SIZE,
         (sprite_number / SPRITES_PER_ROW) * FONT_SIZE,
     )
-}
-
-impl Default for Framebuffer {
-    fn default() -> Self {
-        let mut buffer = Vec::new();
-        buffer.resize(SCREEN_WIDTH * SCREEN_HEIGHT, PALETTE[0]);
-
-        Framebuffer { buffer }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -997,6 +1039,33 @@ impl From<Rect> for ((u8, u8), (u8, u8)) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[allow(unused_imports)]
+    use quickcheck::*;
+
+    struct TinyDim;
+
+    impl_dimensions!((8, 8): TinyDim);
+
+    type Framebuffer = FramebufferInternal<TinyDim>;
+
+    #[test]
+    fn a_full_filled_quad_renders_correctly() {
+        let mut framebuffer = Framebuffer::new();
+        const C: u32 = PALETTE[1];
+        assert_ne!(framebuffer.buffer[0], C); //precondiion
+
+        let (w, h) = TinyDim::get();
+        let (max_x, max_y) = (w as u8 - 1, h as u8 - 1);
+
+        framebuffer.draw_filled_quad(0, 0, 0, max_y, max_x, 0, max_x, max_y, C);
+
+        assert_eq!(framebuffer.buffer, vec![C; w * h]);
+    }
+}
+
 pub fn get_text_dimensions(bytes: &[u8]) -> (u8, u8) {
     let mut width: u8 = 0;
     let mut height: u8 = 0;
@@ -1035,7 +1104,7 @@ pub fn center_rect_in_rect<R: Into<Rect>>((width, height): (u8, u8), r: R) -> (u
 }
 
 #[cfg(test)]
-mod tests {
+mod text_tests {
     use super::*;
     use quickcheck::*;
 

@@ -11,3 +11,9 @@ path = "../text"
 
 [dependencies.platform_types]
 path = "../platform_types"
+
+[dependencies.features]
+path = "../features"
+
+[dev-dependencies]
+quickcheck = "0.6.2"
