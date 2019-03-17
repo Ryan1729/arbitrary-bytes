@@ -168,7 +168,7 @@
                 });
 
         var fileInputElement = document.getElementById("file-input");
-        fileInputElement.addEventListener("change", e => fileReader.readAsText(fileInputElement.files[0]));
+        fileInputElement.addEventListener("change", e => fileReader.readAsArrayBuffer(fileInputElement.files[0]));
     </script>
 </body>
 </html>

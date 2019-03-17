@@ -217,7 +217,7 @@ impl<S: State> State for PinkyWeb<S> {
         self.state.get_frame_buffer()
     }
 
-    fn update_bytes(&mut self, bytes: &[u8]) {
+    fn update_bytes(&mut self, bytes: Vec<u8>) {
         self.state.update_bytes(bytes);
     }
 }
@@ -465,16 +465,18 @@ fn handle_error<E: Into<Box<dyn Error>>>(error: E) {
 static mut PINKY: Option<Rc<RefCell<State + 'static>>> = None;
 
 use stdweb::js_export;
+use stdweb::web::TypedArray;
 
 #[js_export]
 fn update_bytes(file_reader: FileReader) {
     let s = match file_reader.result() {
         Some(value) => match value {
-            FileReaderResult::String(value) => {
+            FileReaderResult::ArrayBuffer(value) => {
+                let typed: TypedArray<u8> = value.into();
                 match unsafe { PINKY.as_ref() } {
                     Some(pinky) => match pinky.try_borrow_mut() {
                         Ok(mut pinky) => {
-                            pinky.update_bytes(value.as_bytes());
+                            pinky.update_bytes(typed.to_vec());
                         }
                         Err(e) => {
                             console!(log, format!("Could not borrow PINKY! {:?}", e));
@@ -485,7 +487,7 @@ fn update_bytes(file_reader: FileReader) {
                     }
                 }
 
-                format!("{:?}", value.as_bytes())
+                format!("{:?}", typed)
             }
             _ => String::from("not a text"),
         },

@@ -1,5 +1,5 @@
 extern crate features;
-use features::{GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
+use features::{log, GLOBAL_ERROR_LOGGER, GLOBAL_LOGGER};
 extern crate platform_types;
 use platform_types::{Button, Input, Speaker, State, StateParams, SFX};
 extern crate rendering;
@@ -70,8 +70,8 @@ impl State for EntireState {
         &self.framebuffer.buffer
     }
 
-    fn update_bytes(&mut self, bytes: &[u8]) {
-        self.game_state.bytes = bytes.to_vec();
+    fn update_bytes(&mut self, bytes: Vec<u8>) {
+        self.game_state.bytes = bytes;
         self.game_state.render_mode = match self.game_state.render_mode {
             RenderMode::Quadrilateral(_) => RenderMode::Quadrilateral(d!()),
             RenderMode::ThreeBitsPerPixel(_) => RenderMode::ThreeBitsPerPixel(d!()),
@@ -116,7 +116,7 @@ pub struct GameState {
     pub bytes: Vec<u8>,
 }
 
-pub const DEFAULT_BYTES: &[u8] = include_bytes!("player.rs");
+pub const DEFAULT_BYTES: &[u8] = include_bytes!("../../../test/full_screen_quad.txt"); //include_bytes!("player.rs");
 
 #[inline]
 pub fn update_and_render(
@@ -168,6 +168,8 @@ pub fn update_and_render_quadrilateral(
             }
         };
     }
+
+    log!((state.byte_index, bytes));
 
     let u8s = [
         extract_or_zero!(state.byte_index + 0),
