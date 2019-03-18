@@ -106,8 +106,8 @@ impl<D: Dimensions> FramebufferInternal<D> {
         Self::default()
     }
 
-    pub fn xy_to_i(x: usize, y: usize) -> usize {
-        y.saturating_mul(D::get().0).saturating_add(x)
+    pub fn xy_to_i<U1: Into<usize>, U2: Into<usize>>(x: U1, y: U2) -> usize {
+        y.into().saturating_mul(D::get().0).saturating_add(x.into())
     }
 
     pub fn draw_filled_rect(
@@ -329,7 +329,6 @@ impl<D: Dimensions> FramebufferInternal<D> {
             let mut w2 = w2_row;
 
             for px in min_x..=max_x {
-                test_dbg!((w0, w1, w2));
                 // If p is on or inside all edges, render pixel.
                 if w0 | w1 | w2 >= 0 {
                     self.buffer[Self::xy_to_i(px as usize, py as usize)] = colour;
@@ -947,8 +946,8 @@ impl<D: Dimensions> FramebufferInternal<D> {
             self.buffer[Self::xy_to_i(
                 //if we don't `& 0b11` here then the hexagon is drawn 4 to the right of `x`
                 //when the right half of the hexagon is drawn.
-                x.wrapping_add(hex_x & 0b11) as _,
-                y.wrapping_add(hex_y) as _,
+                x.wrapping_add(hex_x & 0b11),
+                y.wrapping_add(hex_y),
             )] = c;
         }
     }
@@ -1062,6 +1061,40 @@ mod tests {
         framebuffer.draw_filled_quad(0, 0, 0, max_y, max_x, 0, max_x, max_y, C);
 
         assert_eq!(framebuffer.buffer, vec![C; w * h]);
+    }
+
+    //TODO maybe make this into a quickcheck test?
+    #[test]
+    fn a_quad_that_was_incorrectly_rendered_as_a_triangle_renders_correctly() {
+        let mut framebuffer = Framebuffer::new();
+        const C: u32 = PALETTE[1];
+        assert_ne!(framebuffer.buffer[0], C); //precondiion
+
+        let (w, h) = TinyDim::get();
+        let (max_x, max_y) = (w as u8 - 1, h as u8 - 1);
+
+        let bytes = [max_x, 0, max_x, max_y / 4, 0, max_y / 2, max_x / 2, max_y];
+
+        framebuffer.draw_filled_quad(
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], C,
+        );
+
+        assert_eq!(
+            framebuffer.buffer[Framebuffer::xy_to_i(bytes[0], bytes[1])],
+            C
+        );
+        assert_eq!(
+            framebuffer.buffer[Framebuffer::xy_to_i(bytes[2], bytes[3])],
+            C
+        );
+        assert_eq!(
+            framebuffer.buffer[Framebuffer::xy_to_i(bytes[4], bytes[5])],
+            C
+        );
+        assert_eq!(
+            framebuffer.buffer[Framebuffer::xy_to_i(bytes[6], bytes[7])],
+            C
+        );
     }
 }
 

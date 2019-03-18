@@ -116,7 +116,7 @@ pub struct GameState {
     pub bytes: Vec<u8>,
 }
 
-pub const DEFAULT_BYTES: &[u8] = include_bytes!("../../../test/full_screen_quad.txt"); //include_bytes!("player.rs");
+pub const DEFAULT_BYTES: &[u8] = include_bytes!("player.rs");
 
 #[inline]
 pub fn update_and_render(
