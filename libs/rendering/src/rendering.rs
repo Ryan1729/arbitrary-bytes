@@ -301,6 +301,14 @@ impl<D: Dimensions> FramebufferInternal<D> {
         y2: u8,
         colour: u32,
     ) {
+        //The rest of this function assumes the points are in in counter-clockwise order.
+        let is_clockwise = Self::orient_2d(x0, y0, x1, y1, x2, y2) < 0;
+        let (x1, y1, x2, y2) = if is_clockwise {
+            (x2, y2, x1, y1)
+        } else {
+            (x1, y1, x2, y2)
+        };
+
         // Compute triangle bounding box
         let min_x = min(x0, min(x1, x2));
         let min_y = min(y0, min(y1, y2));
@@ -359,13 +367,7 @@ impl<D: Dimensions> FramebufferInternal<D> {
         y3: u8,
         colour: u32,
     ) {
-        //  0---2
-        //  |  /|
-        //  | / |
-        //  |/  |
-        //  1---3
-        // clockwise
-        self.draw_filled_triangle(x0, y0, x2, y2, x1, y1, colour);
+        self.draw_filled_triangle(x0, y0, x1, y1, x2, y2, colour);
         self.draw_filled_triangle(x1, y1, x2, y2, x3, y3, colour);
     }
 
@@ -1063,17 +1065,169 @@ mod tests {
         assert_eq!(framebuffer.buffer, vec![C; w * h]);
     }
 
-    //TODO maybe make this into a quickcheck test?
+    macro_rules! all_perms_quad_check {
+        ($bytes: expr) => {
+            //by hand
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[2], $bytes[3], $bytes[4], $bytes[5], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[2], $bytes[3], $bytes[6], $bytes[7], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[4], $bytes[5], $bytes[2], $bytes[3], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[4], $bytes[5], $bytes[6], $bytes[7], $bytes[2],
+                $bytes[3],
+            ]);
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[6], $bytes[7], $bytes[2], $bytes[3], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[0], $bytes[1], $bytes[6], $bytes[7], $bytes[4], $bytes[5], $bytes[2],
+                $bytes[3],
+            ]);
+
+            // take the by hand section and:
+            // replace 0 with x, 1 with y, then 2 with 0 and 3 with 1, then x with 2 and y with 3
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[0], $bytes[1], $bytes[4], $bytes[5], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[0], $bytes[1], $bytes[6], $bytes[7], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[4], $bytes[5], $bytes[0], $bytes[1], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[4], $bytes[5], $bytes[6], $bytes[7], $bytes[0],
+                $bytes[1],
+            ]);
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[6], $bytes[7], $bytes[0], $bytes[1], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[2], $bytes[3], $bytes[6], $bytes[7], $bytes[4], $bytes[5], $bytes[0],
+                $bytes[1],
+            ]);
+
+            // take the by hand section and:
+            // replace 0 with x, 1 with y, then 4 with 0 and 5 with 1, then x with 4 and y with 5
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[2], $bytes[3], $bytes[0], $bytes[1], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[2], $bytes[3], $bytes[6], $bytes[7], $bytes[0],
+                $bytes[1],
+            ]);
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[0], $bytes[1], $bytes[2], $bytes[3], $bytes[6],
+                $bytes[7],
+            ]);
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[0], $bytes[1], $bytes[6], $bytes[7], $bytes[2],
+                $bytes[3],
+            ]);
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[6], $bytes[7], $bytes[2], $bytes[3], $bytes[0],
+                $bytes[1],
+            ]);
+            quad_check(&[
+                $bytes[4], $bytes[5], $bytes[6], $bytes[7], $bytes[0], $bytes[1], $bytes[2],
+                $bytes[3],
+            ]);
+
+            // take the by hand section and:
+            // replace 0 with x, 1 with y, then 6 with 0 and 7 with 1, then x with 6 and y with 7
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[2], $bytes[3], $bytes[4], $bytes[5], $bytes[0],
+                $bytes[1],
+            ]);
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[2], $bytes[3], $bytes[0], $bytes[1], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[4], $bytes[5], $bytes[2], $bytes[3], $bytes[0],
+                $bytes[1],
+            ]);
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[4], $bytes[5], $bytes[0], $bytes[1], $bytes[2],
+                $bytes[3],
+            ]);
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[0], $bytes[1], $bytes[2], $bytes[3], $bytes[4],
+                $bytes[5],
+            ]);
+            quad_check(&[
+                $bytes[6], $bytes[7], $bytes[0], $bytes[1], $bytes[4], $bytes[5], $bytes[2],
+                $bytes[3],
+            ]);
+        };
+    }
+
+    #[test]
+    fn all_diamond_quads_render_correctly() {
+        let (w, h) = TinyDim::get();
+        let (max_x, max_y) = (w as u8 - 1, h as u8 - 1);
+        let bytes = [
+            max_x / 2,
+            0,
+            0,
+            max_y / 2,
+            max_x / 2,
+            max_y,
+            max_x,
+            max_y / 2,
+        ];
+
+        all_perms_quad_check!(bytes);
+    }
+
     #[test]
     fn a_quad_that_was_incorrectly_rendered_as_a_triangle_renders_correctly() {
-        let mut framebuffer = Framebuffer::new();
-        const C: u32 = PALETTE[1];
-        assert_ne!(framebuffer.buffer[0], C); //precondiion
-
         let (w, h) = TinyDim::get();
         let (max_x, max_y) = (w as u8 - 1, h as u8 - 1);
 
         let bytes = [max_x, 0, max_x, max_y / 4, 0, max_y / 2, max_x / 2, max_y];
+
+        all_perms_quad_check!(bytes);
+    }
+
+    #[test]
+    fn concave_crescent_quads_render_correctly() {
+        let (w, h) = TinyDim::get();
+        let (max_x, max_y) = (w as u8 - 1, h as u8 - 1);
+
+        let bytes = [
+            max_x / 2,
+            0,
+            0,
+            max_y / 2,
+            max_x / 2,
+            max_y,
+            max_x / 4,
+            max_y / 2,
+        ];
+
+        all_perms_quad_check!(bytes);
+    }
+
+    fn quad_check(bytes: &[u8]) {
+        let mut framebuffer = Framebuffer::new();
+        const C: u32 = PALETTE[1];
+        assert_ne!(framebuffer.buffer[0], C); //precondiions
+        assert!(bytes.len() >= 8);
 
         framebuffer.draw_filled_quad(
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], C,
@@ -1081,19 +1235,31 @@ mod tests {
 
         assert_eq!(
             framebuffer.buffer[Framebuffer::xy_to_i(bytes[0], bytes[1])],
-            C
+            C,
+            "bytes: {:?} at: {:?}",
+            bytes,
+            (bytes[0], bytes[1])
         );
         assert_eq!(
             framebuffer.buffer[Framebuffer::xy_to_i(bytes[2], bytes[3])],
-            C
+            C,
+            "bytes: {:?} at: {:?}",
+            bytes,
+            (bytes[2], bytes[3])
         );
         assert_eq!(
             framebuffer.buffer[Framebuffer::xy_to_i(bytes[4], bytes[5])],
-            C
+            C,
+            "bytes: {:?} at: {:?}",
+            bytes,
+            (bytes[4], bytes[5])
         );
         assert_eq!(
             framebuffer.buffer[Framebuffer::xy_to_i(bytes[6], bytes[7])],
-            C
+            C,
+            "bytes: {:?} at: {:?}",
+            bytes,
+            (bytes[6], bytes[7])
         );
     }
 }
