@@ -169,8 +169,6 @@ pub fn update_and_render_quadrilateral(
         };
     }
 
-    log!((state.byte_index, bytes));
-
     let u8s = [
         extract_or_zero!(state.byte_index + 0),
         extract_or_zero!(state.byte_index + 1),
@@ -196,8 +194,7 @@ pub fn update_and_render_quadrilateral(
 
     state.byte_index += 8;
     if state.byte_index >= bytes.len() {
-        // TODO should we fade out or something?
-        state.byte_index = 0;
+        state.byte_index = bytes.len();
     }
 }
 

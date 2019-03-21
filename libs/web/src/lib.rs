@@ -487,14 +487,20 @@ fn update_bytes(file_reader: FileReader) {
                     }
                 }
 
-                format!("{:?}", typed)
+                if cfg!(feature = "logging") {
+                    format!("{:?}", typed.to_vec())
+                } else {
+                    String::from("")
+                }
             }
-            _ => String::from("not a text"),
+            _ => String::from("not made of bytes!?"),
         },
         None => String::from("empty"),
     };
 
-    console!(log, format!("update bytes: {}", s));
+    if cfg!(feature = "logging") {
+        console!(log, format!("update bytes: {}", s));
+    }
 }
 
 pub fn run<S: State + 'static>(state: S) {
